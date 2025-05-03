@@ -5,9 +5,33 @@ from app.utils.csv_parser import parse_csv
 # from app.models.account import AccountRequest, AccountResponse
 from app.models.account import AccountResponse, AccountError, ValidationSummary, ApiResponse
 from typing import Dict, List, Any
+import re
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Base URL for Pesalink API
-PESALINK_BASE = "https://account-validation-service.dev.pesalink.co.ke"
+PESALINK_BASE = os.getenv("PESALINK_BASE_URL")
+api_key = os.getenv("PESALINK_API_KEY")
+
+if not PESALINK_BASE:
+    print("WARNING: PESALINK_BASE_URL not set in environment variables")
+
+
+def get_pesalink_base_url() -> str:
+    """
+    Get and validate the Pesalink base URL, ensuring it has a protocol.
+    """
+    base_url = os.getenv("PESALINK_BASE_URL", "")
+    
+    # If URL doesn't start with http:// or https://, add https://
+    if not re.match(r'^https?://', base_url):
+        base_url = f"https://{base_url}"
+        
+    return base_url
+
+PESALINK_BASE = get_pesalink_base_url()
 
 async def fetch_api_key() -> Dict[str, Any]:
     """
@@ -17,8 +41,13 @@ async def fetch_api_key() -> Dict[str, Any]:
         Dict: JSON response containing the API key
     """
     try:
+        base_url = get_pesalink_base_url()
+        endpoint = f"{base_url}/api/key"  # Changed from api_key to base_url
+        
+        print(f"Fetching API key from: {endpoint}")
+
         async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.get(f"{PESALINK_BASE}/api/key")
+            res = await client.get(endpoint)
             res.raise_for_status()
             return res.json()
     except httpx.HTTPStatusError as e:
@@ -43,8 +72,33 @@ async def validate_account(payload: Dict[str, str]) -> Dict[str, Any]:
         Dict: Validation result from Pesalink
     """
     try:
+        # Get API key
+        api_key_response = await fetch_api_key()
+        api_key = api_key_response["api_key"]
+        
+        # Get base URL with protocol
+        base_url = get_pesalink_base_url()
+        
+        # Log for debugging
+        print(f"Using base URL: {base_url}")
+        
+        # Set headers with API key
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        # Make sure the URL has the protocol
+        endpoint = f"{base_url}/api/validate"
+        if not endpoint.startswith(('http://', 'https://')):
+            raise ValueError(f"Invalid endpoint URL: {endpoint}. URL must include http:// or https:// protocol.")
+            
+        print(f"Making request to: {endpoint}")
+
+        
         async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(f"{PESALINK_BASE}/api/validate", json=payload)
+            res = await client.post(endpoint, json=payload,
+                headers=headers)
             res.raise_for_status()
             return res.json()
     except httpx.HTTPStatusError as e:

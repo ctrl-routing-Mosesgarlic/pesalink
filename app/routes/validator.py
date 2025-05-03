@@ -7,6 +7,8 @@ import io
 import csv
 from app.services.pesalink import fetch_api_key, validate_account, validate_bulk_accounts
 from app.models.account import AccountRequest, ApiResponse
+import os
+from dotenv import load_dotenv
 
 # app = FastAPI()
 
@@ -14,13 +16,13 @@ from app.models.account import AccountRequest, ApiResponse
 validator = APIRouter(tags=["validation"])
 
 # Allow frontend access
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 
 #Api key end points
@@ -51,8 +53,21 @@ async def validate_single_account(account_details: AccountRequest):
         dict: Account validation result
     """
     try:
-        return await validate_account(account_details.dict())
+        # For Pydantic v2
+        if hasattr(account_details, "model_dump"):
+            account_data = account_details.model_dump()
+        # For Pydantic v1 backward compatibility
+        else:
+            account_data = account_details.dict()
+            
+        return await validate_account(account_data)
     except Exception as e:
+        # Log the full exception for debugging
+        import traceback
+        print(f"Error in validate_single_account: {str(e)}")
+        print(traceback.format_exc())
+        
+        # Return a more detailed error
         raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 # Bulk validation via CSV
