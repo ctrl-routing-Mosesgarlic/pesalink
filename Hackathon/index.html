@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pesalink Bulk Account Validator</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'pesalink-yellow': '#FFD700',
+            'pesalink-red': '#FF4136',
+            'pesalink-blue': '#0074D9',
+            'pesalink-green': '#2ECC40',
+          }
+        }
+      }
+    }
+  </script>
+  
+  <style>
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="min-h-screen bg-gradient-to-b from-white to-gray-50">
+  <div class="container mx-auto px-4 py-8" x-data="appData()">
+    <!-- Header -->
+    <header class="mb-8 text-center">
+      <div class="flex justify-center mb-4">
+        <div class="flex items-center gap-2">
+          <span class="h-8 w-8 rounded-full bg-pesalink-yellow"></span>
+          <span class="h-8 w-8 rounded-full bg-pesalink-red"></span>
+          <span class="h-8 w-8 rounded-full bg-pesalink-blue"></span>
+          <span class="h-8 w-8 rounded-full bg-pesalink-green"></span>
+        </div>
+      </div>
+      <h1 class="text-4xl font-bold text-gray-800 mb-2">Bulk Bank Account Validator</h1>
+      <p class="text-gray-600 max-w-2xl mx-auto">
+        Validate multiple bank accounts at once to prevent AC01 errors and ensure smooth transactions
+      </p>
+    </header>
+
+    <div class="max-w-4xl mx-auto">
+      <!-- File Uploader -->
+      <div class="p-6 mb-8 border-2 border-dashed border-gray-200 hover:border-gray-300 transition-colors rounded-lg bg-white">
+        <template x-if="!file">
+          <div 
+            class="flex flex-col items-center justify-center py-12 cursor-pointer"
+            :class="isDragging ? 'bg-blue-50' : ''"
+            @dragover.prevent="isDragging = true"
+            @dragleave.prevent="isDragging = false"
+            @drop.prevent="handleFileDrop"
+            @click="$refs.fileInput.click()"
+          >
+            <!-- Upload Icon -->
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-pesalink-blue mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <h3 class="text-lg font-medium text-gray-800 mb-2">Drag and drop a CSV file here</h3>
+            <p class="text-sm text-gray-500 mb-4">or click to select a file</p>
+            <input 
+              x-ref="fileInput" 
+              type="file" 
+              accept=".csv" 
+              class="hidden" 
+              @change="handleFileChange"
+            >
+            <div class="text-xs text-gray-400 mt-2">
+              <div class="flex items-center">
+                <!-- Alert Circle Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Only CSV files are supported</span>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="file">
+          <div class="py-4">
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center">
+                <!-- File Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-pesalink-blue mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div>
+                  <p class="font-medium text-gray-800" x-text="file.name"></p>
+                  <p class="text-xs text-gray-500" x-text="`${(file.size / 1024).toFixed(2)} KB`"></p>
+                </div>
+              </div>
+              <button 
+                class="p-2 text-gray-500 rounded-full hover:bg-gray-100"
+                @click="removeFile"
+                :disabled="isUploading"
+              >
+                <!-- X Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <template x-if="isUploading">
+              <div class="mb-4">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Validating...</span>
+                  <span x-text="`${uploadProgress}%`"></span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    class="bg-pesalink-blue h-2 rounded-full" 
+                    :style="`width: ${uploadProgress}%`"
+                  ></div>
+                </div>
+              </div>
+            </template>
+
+            <template x-if="!isUploading">
+              <button 
+                class="w-full py-2 px-4 bg-pesalink-green hover:bg-opacity-90 text-white rounded-md flex items-center justify-center"
+                @click="validateFile"
+              >
+                <!-- Check Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Validate
+              </button>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- Results Display -->
+      <div x-show="validationData" x-cloak class="space-y-6">
+        <div class="p-6 rounded-lg bg-white border border-gray-200">
+          <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 md:mb-0">Results</h2>
+            <button 
+              class="py-2 px-4 bg-pesalink-blue hover:bg-opacity-90 text-white rounded-md flex items-center justify-center"
+              @click="downloadResults"
+            >
+              <!-- PDF Icon instead of Download Icon -->
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Download PDF Report
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <!-- Total Card -->
+            <div class="p-4 rounded-lg bg-white border border-gray-200 border-l-4 border-l-pesalink-blue">
+              <div class="flex justify-between items-center">
+                <div>
+                  <p class="text-sm text-gray-500">Total Accounts</p>
+                  <p class="text-2xl font-bold" x-text="validationData.total"></p>
+                </div>
+                <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                  <!-- Pie Chart Icon -->
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-pesalink-blue" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Valid Card -->
+            <div class="p-4 rounded-lg bg-white border border-gray-200 border-l-4 border-l-pesalink-green">
+              <div class="flex justify-between items-center">
+                <div>
+                  <p class="text-sm text-gray-500">Valid Accounts</p>
+                  <p class="text-2xl font-bold" x-text="validationData.valid"></p>
+                </div>
+                <div class="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                  <!-- Check Circle Icon -->
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-pesalink-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+
+            <!-- Invalid Card -->
+            <div class="p-4 rounded-lg bg-white border border-gray-200 border-l-4 border-l-pesalink-red">
+              <div class="flex justify-between items-center">
+                <div>
+                  <p class="text-sm text-gray-500">Invalid Accounts</p>
+                  <p class="text-2xl font-bold" x-text="validationData.invalid"></p>
+                </div>
+                <div class="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center">
+                  <!-- X Circle Icon -->
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-pesalink-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            <div class="lg:col-span-2">
+              <!-- Tabs -->
+              <div class="mb-4 border-b border-gray-200">
+                <ul class="flex flex-wrap -mb-px">
+                  <li class="mr-2">
+                    <button 
+                      class="inline-block py-2 px-4 text-sm font-medium"
+                      :class="activeTab === 'all' ? 'text-pesalink-blue border-b-2 border-pesalink-blue' : 'text-gray-500 hover:text-gray-700'"
+                      @click="activeTab = 'all'"
+                    >
+                      All Accounts
+                    </button>
+                  </li>
+                  <li class="mr-2">
+                    <button 
+                      class="inline-block py-2 px-4 text-sm font-medium"
+                      :class="activeTab === 'valid' ? 'text-pesalink-blue border-b-2 border-pesalink-blue' : 'text-gray-500 hover:text-gray-700'"
+                      @click="activeTab = 'valid'"
+                    >
+                      Valid
+                    </button>
+                  </li>
+                  <li>
+                    <button 
+                      class="inline-block py-2 px-4 text-sm font-medium"
+                      :class="activeTab === 'invalid' ? 'text-pesalink-blue border-b-2 border-pesalink-blue' : 'text-gray-500 hover:text-gray-700'"
+                      @click="activeTab = 'invalid'"
+                    >
+                      Invalid
+                    </button>
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Results Table -->
+              <div class="border rounded-md overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                  <thead class="bg-gray-50">
+                    <tr>
+                      <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Account Number
+                      </th>
+                      <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Bank Code
+                      </th>
+                      <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Status
+                      </th>
+                      <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Reason
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody class="bg-white divide-y divide-gray-200">
+                    <template x-for="(result, index) in filteredResults" :key="index">
+                      <tr>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900" x-text="result.accountNumber"></td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="result.bankCode"></td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                          <span 
+                            class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full"
+                            :class="result.status === 'Valid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'"
+                            x-text="result.status"
+                          ></span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500" x-text="result.reason || '-'"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="bg-white p-4 rounded-lg border border-gray-200">
+              <h3 class="text-lg font-medium mb-4">Validation Summary</h3>
+              <div class="h-[250px] w-full">
+                <canvas id="resultsChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast Notification -->
+      <div 
+        x-show="toast.visible" 
+        x-transition:enter="transition ease-out duration-300"
+        x-transition:enter-start="opacity-0 transform translate-y-2"
+        x-transition:enter-end="opacity-100 transform translate-y-0"
+        x-transition:leave="transition ease-in duration-200"
+        x-transition:leave-start="opacity-100 transform translate-y-0"
+        x-transition:leave-end="opacity-0 transform translate-y-2"
+        class="fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg"
+        :class="toast.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'"
+        x-cloak
+      >
+        <div class="flex items-center">
+          <template x-if="toast.type === 'success'">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </template>
+          <template x-if="toast.type === 'error'">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </template>
+          <span x-text="toast.message"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function appData() {
+      return {
+        file: null,
+        isDragging: false,
+        isUploading: false,
+        uploadProgress: 0,
+        validationData: null,
+        activeTab: 'all',
+        toast: {
+          visible: false,
+          message: '',
+          type: 'success'
+        },
+        chart: null,
+
+        // Computed property for filtered results
+        get filteredResults() {
+          if (!this.validationData) return [];
+          
+          if (this.activeTab === 'all') {
+            return this.validationData.results;
+          } else if (this.activeTab === 'valid') {
+            return this.validationData.results.filter(r => r.status === 'Valid');
+          } else {
+            return this.validationData.results.filter(r => r.status === 'Invalid');
+          }
+        },
+
+        // Handle file drop
+        handleFileDrop(e) {
+          this.isDragging = false;
+          
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            const droppedFile = e.dataTransfer.files[0];
+            if (this.isValidFile(droppedFile)) {
+              this.file = droppedFile;
+            }
+          }
+        },
+
+        // Handle file selection
+        handleFileChange(e) {
+          if (e.target.files && e.target.files.length > 0) {
+            const selectedFile = e.target.files[0];
+            if (this.isValidFile(selectedFile)) {
+              this.file = selectedFile;
+            }
+          }
+        },
+
+        // Validate file type
+        isValidFile(file) {
+          if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+            return true;
+          } else {
+            this.showToast('Please upload a CSV file', 'error');
+            return false;
+          }
+        },
+
+        // Remove selected file
+        removeFile() {
+          this.file = null;
+          this.uploadProgress = 0;
+        },
+
+        // Validate the file
+        validateFile() {
+          if (!this.file) return;
+
+          this.isUploading = true;
+          this.uploadProgress = 0;
+
+          // Simulate upload progress
+          const interval = setInterval(() => {
+            this.uploadProgress += 10;
+            if (this.uploadProgress >= 100) {
+              clearInterval(interval);
+              this.uploadProgress = 100;
+              
+              // Simulate successful validation after a short delay
+              setTimeout(() => {
+                this.isUploading = false;
+                this.processValidationResults();
+                this.showToast('Validation complete', 'success');
+              }, 500);
+            }
+          }, 200);
+        },
+
+        // Process validation results (simulated)
+        processValidationResults() {
+          // Simulated validation results
+          this.validationData = {
+            total: 100,
+            valid: 85,
+            invalid: 15,
+            results: [
+              { accountNumber: '1234567890', bankCode: '001', status: 'Valid', reason: '' },
+              { accountNumber: '2345678901', bankCode: '002', status: 'Invalid', reason: 'Account not found' },
+              { accountNumber: '3456789012', bankCode: '003', status: 'Invalid', reason: 'Invalid bank code' },
+              { accountNumber: '4567890123', bankCode: '001', status: 'Valid', reason: '' },
+              { accountNumber: '5678901234', bankCode: '002', status: 'Valid', reason: '' },
+              { accountNumber: '6789012345', bankCode: '003', status: 'Valid', reason: '' },
+              { accountNumber: '7890123456', bankCode: '001', status: 'Valid', reason: '' },
+              { accountNumber: '8901234567', bankCode: '002', status: 'Invalid', reason: 'Account closed' },
+              { accountNumber: '9012345678', bankCode: '003', status: 'Valid', reason: '' },
+              { accountNumber: '0123456789', bankCode: '001', status: 'Valid', reason: '' },
+            ]
+          };
+
+          // Initialize chart after a short delay to ensure the DOM is ready
+          setTimeout(() => {
+            this.initChart();
+          }, 100);
+        },
+
+        // Initialize the results chart
+        initChart() {
+          const ctx = document.getElementById('resultsChart').getContext('2d');
+          
+          // Destroy existing chart if it exists
+          if (this.chart) {
+            this.chart.destroy();
+          }
+          
+          this.chart = new Chart(ctx, {
+            type: 'pie',
+            data: {
+              labels: ['Valid', 'Invalid'],
+              datasets: [{
+                data: [this.validationData.valid, this.validationData.invalid],
+                backgroundColor: ['#2ECC40', '#FF4136'],
+                borderColor: ['#fff', '#fff'],
+                borderWidth: 1
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: 'bottom'
+                },
+                tooltip: {
+                  callbacks: {
+                    label: function(context) {
+                      const label = context.label || '';
+                      const value = context.raw || 0;
+                      const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                      const percentage = Math.round((value / total) * 100);
+                      return `${label}: ${value} (${percentage}%)`;
+                    }
+                  }
+                }
+              }
+            }
+          });
+        },
+
+        // Show toast notification
+        showToast(message, type = 'success') {
+          this.toast = {
+            visible: true,
+            message: message,
+            type: type
+          };
+
+          // Hide toast after 3 seconds
+          setTimeout(() => {
+            this.toast.visible = false;
+          }, 3000);
+        },
+
+        // Download results as PDF
+        downloadResults() {
+          if (!this.validationData) return;
+          
+          // Show generating message without using the function
+          this.toast = {
+            visible: true,
+            message: 'Generating PDF report...',
+            type: 'success'
+          };
+
+          // Hide toast after 3 seconds
+          setTimeout(() => {
+            this.toast.visible = false;
+          }, 3000);
+          
+          // Use jsPDF and html2canvas
+          const { jsPDF } = window.jspdf;
+          const doc = new jsPDF('p', 'mm', 'a4');
+          const pageWidth = doc.internal.pageSize.getWidth();
+          const pageHeight = doc.internal.pageSize.getHeight();
+          
+          // Add title
+          doc.setFontSize(20);
+          doc.setTextColor(0, 0, 0);
+          doc.text('Pesalink Account Validation Report', pageWidth / 2, 20, { align: 'center' });
+          
+          // Add date
+          doc.setFontSize(10);
+          doc.text(`Generated on: ${new Date().toLocaleString()}`, pageWidth / 2, 27, { align: 'center' });
+          
+          // Add summary section
+          doc.setFontSize(16);
+          doc.text('Validation Summary', 14, 40);
+          
+          doc.setFontSize(12);
+          doc.text(`Total Accounts: ${this.validationData.total}`, 14, 50);
+          doc.text(`Valid Accounts: ${this.validationData.valid}`, 14, 57);
+          doc.text(`Invalid Accounts: ${this.validationData.invalid}`, 14, 64);
+          
+          // Calculate validation rate
+          const validRate = ((this.validationData.valid / this.validationData.total) * 100).toFixed(1);
+          doc.text(`Validation Success Rate: ${validRate}%`, 14, 71);
+          
+          // Add chart
+          const chartCanvas = document.getElementById('resultsChart');
+          
+          html2canvas(chartCanvas).then(canvas => {
+            // Add the chart image
+            const chartImgData = canvas.toDataURL('image/png');
+            const chartImgWidth = 80;
+            const chartImgHeight = (canvas.height * chartImgWidth) / canvas.width;
+            doc.addImage(chartImgData, 'PNG', (pageWidth - chartImgWidth) / 2, 80, chartImgWidth, chartImgHeight);
+            
+            // Add results table
+            doc.addPage();
+            doc.setFontSize(16);
+            doc.text('Detailed Results', 14, 20);
+            
+            // Table header
+            doc.setFontSize(11);
+            doc.setTextColor(100, 100, 100);
+            doc.text('Account Number', 14, 30);
+            doc.text('Bank Code', 65, 30);
+            doc.text('Status', 95, 30);
+            doc.text('Reason', 125, 30);
+            
+            // Draw header line
+            doc.setDrawColor(200, 200, 200);
+            doc.line(14, 32, pageWidth - 14, 32);
+            
+            // Table content
+            doc.setTextColor(0, 0, 0);
+            let yPos = 40;
+            
+            this.validationData.results.forEach((result, index) => {
+              // Add new page if needed
+              if (yPos > pageHeight - 20) {
+                doc.addPage();
+                yPos = 20;
+              }
+              
+              doc.text(result.accountNumber, 14, yPos);
+              doc.text(result.bankCode, 65, yPos);
+              
+              // Set color based on status
+              if (result.status === 'Valid') {
+                doc.setTextColor(46, 204, 64); // Green
+              } else {
+                doc.setTextColor(255, 65, 54); // Red
+              }
+              
+              doc.text(result.status, 95, yPos);
+              
+              // Reset color for reason
+              doc.setTextColor(0, 0, 0);
+              doc.text(result.reason || '-', 125, yPos);
+              
+              // Draw light line between rows
+              if (index < this.validationData.results.length - 1) {
+                doc.setDrawColor(240, 240, 240);
+                doc.line(14, yPos + 2, pageWidth - 14, yPos + 2);
+              }
+              
+              yPos += 10;
+            });
+            
+            // Add footer
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+              doc.setPage(i);
+              doc.setFontSize(8);
+              doc.setTextColor(150, 150, 150);
+              doc.text(`Pesalink Bulk Account Validator - Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+            }
+            
+            // Save the PDF
+            doc.save('pesalink_validation_report.pdf');
+            
+            // Show success message
+            this.toast = {
+              visible: true,
+              message: 'PDF report downloaded successfully',
+              type: 'success'
+            };
+
+            // Hide toast after 3 seconds
+            setTimeout(() => {
+              this.toast.visible = false;
+            }, 3000);
+          });
+        }
+      };
+    }
+  </script>
+</body>
+</html>
