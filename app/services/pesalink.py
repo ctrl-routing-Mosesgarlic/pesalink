@@ -41,13 +41,8 @@ async def fetch_api_key() -> Dict[str, Any]:
         Dict: JSON response containing the API key
     """
     try:
-        base_url = get_pesalink_base_url()
-        endpoint = f"{base_url}/api/key"  # Changed from api_key to base_url
-        
-        print(f"Fetching API key from: {endpoint}")
-
         async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.get(endpoint)
+            res = await client.get(f"{api_key}/api/key")
             res.raise_for_status()
             return res.json()
     except httpx.HTTPStatusError as e:
@@ -97,8 +92,7 @@ async def validate_account(payload: Dict[str, str]) -> Dict[str, Any]:
 
         
         async with httpx.AsyncClient(timeout=30.0) as client:
-            res = await client.post(endpoint, json=payload,
-                headers=headers)
+            res = await client.post(endpoint, json=payload)
             res.raise_for_status()
             return res.json()
     except httpx.HTTPStatusError as e:
